@@ -46,7 +46,7 @@ Browser → Traefik (Dokploy) → Kong :8000 → internal services
 
 **STUDIO_HOSTNAME** — Must be set in `.env` and Dokploy Environment Variables, or the hostname-based Studio route in Kong won't resolve.
 
-**Cloudflare Access** — If the Supabase URL is behind Cloudflare Access, apps in the same Docker network should use `SUPABASE_INTERNAL_URL=http://kong:8000` for server-side calls, bypassing Cloudflare (which returns HTML challenge pages to non-browser requests).
+**Cloudflare Access** — If the Supabase URL is behind Cloudflare Access, apps in the same Docker network should use `SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000` for server-side calls, bypassing Cloudflare (which returns HTML challenge pages to non-browser requests). Use the `pdfsearch-kong` alias (not bare `kong`) so the lookup resolves deterministically when multiple Supabase stacks share `dokploy-network`.
 
 ## Database Roles
 

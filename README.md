@@ -139,10 +139,12 @@ SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>
 **If your app server runs in the same Docker network as Kong** (e.g. also deployed on Dokploy) and the Supabase URL is behind Cloudflare Access, add:
 
 ```env
-SUPABASE_INTERNAL_URL=http://kong:8000
+SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000
 ```
 
 This routes server-side Supabase calls directly through the internal Docker network, bypassing Cloudflare (which would intercept the request and return an HTML page instead of JSON). Browser/client-side code still uses `NEXT_PUBLIC_SUPABASE_URL` as normal.
+
+**Note the `pdfsearch-kong` alias** instead of the bare `kong` short name: when multiple Supabase stacks run on the same Dokploy host they all share `dokploy-network` and the short alias `kong` becomes ambiguous (round-robin DNS). The stack-specific alias prevents that.
 
 ---
 
