@@ -102,11 +102,16 @@ services:
     <<: *supabase-common
     image: kong:2.8.1
     # Kong is the only service that joins dokploy-network — it's the
-    # ingress point Traefik routes to. All other services live only on
-    # the project-default network.
+    # ingress point Traefik routes to. The stack-specific alias
+    # `pdfsearch-kong` lets apps disambiguate when multiple Supabase
+    # stacks share dokploy-network (the bare `kong` short name is
+    # ambiguous across stacks). Apps connect via:
+    #   SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000
     networks:
-      - default
-      - dokploy-network
+      default:
+      dokploy-network:
+        aliases:
+          - pdfsearch-kong
     expose:
       - "8000"
       - "8443"
