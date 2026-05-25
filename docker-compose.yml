@@ -4,7 +4,10 @@
 # Key differences from the official docker-compose.yml:
 #   - No `container_name` (Dokploy names containers automatically)
 #   - No `ports:` mappings — uses `expose:` only; Traefik routes traffic
-#   - All services join `dokploy-network` (external, created by Dokploy)
+#   - Internal services join the compose `default` network (project-scoped,
+#     auto-named `<project>_default`) so multiple Supabase stacks in the
+#     same Dokploy host don't collide on hostnames like `db`, `meta`, etc.
+#     Only `kong` joins `dokploy-network` for Traefik ingress.
 #   - env_file: .env on each service
 #   - PostgreSQL 17 (matches supabase/postgres image series)
 #   - No supavisor — app uses HTTP/PostgREST, not direct Postgres connections
@@ -21,9 +24,10 @@
 
 x-supabase-common: &supabase-common
   env_file: .env
-  networks:
-    - dokploy-network
   restart: unless-stopped
+  # No `networks:` here — services join the compose default network
+  # (auto-named <project>_default) for stack-local isolation. Only kong
+  # additionally joins dokploy-network for Traefik ingress.
 
 networks:
   dokploy-network:
@@ -97,6 +101,12 @@ services:
   kong:
     <<: *supabase-common
     image: kong:2.8.1
+    # Kong is the only service that joins dokploy-network — it's the
+    # ingress point Traefik routes to. All other services live only on
+    # the project-default network.
+    networks:
+      - default
+      - dokploy-network
     expose:
       - "8000"
       - "8443"
@@ -200,9 +210,11 @@ services:
     image: supabase/realtime:v2.33.72
     # Realtime derives the tenant id from the upstream host. The official
     # Supabase stack routes websocket traffic to realtime-dev.supabase-realtime
-    # so that the seeded realtime-dev tenant is selected.
+    # so that the seeded realtime-dev tenant is selected. Alias lives on the
+    # project-default network — Kong reaches realtime through this network,
+    # not dokploy-network.
     networks:
-      dokploy-network:
+      default:
         aliases:
           - realtime-dev.supabase-realtime
     expose:
