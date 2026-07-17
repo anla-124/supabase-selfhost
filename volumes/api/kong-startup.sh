@@ -8,6 +8,9 @@ sed \
   -e "s|\${DASHBOARD_USERNAME}|${DASHBOARD_USERNAME:-supabase}|g" \
   -e "s|\${DASHBOARD_PASSWORD}|${DASHBOARD_PASSWORD}|g" \
   -e "s|\${STUDIO_HOSTNAME}|${STUDIO_HOSTNAME}|g" \
-  /home/kong/temp.yml > /home/kong/kong.yml
+  /home/kong/temp.yml > /tmp/kong.yml
 
-exec /docker-entrypoint.sh kong docker-start
+# Kong 3.x (kong/kong image) runs as uid 1001 and no longer creates a writable
+# /home/kong, and its entrypoint moved from /docker-entrypoint.sh to /entrypoint.sh.
+# Render into world-writable /tmp and point KONG_DECLARATIVE_CONFIG at /tmp/kong.yml.
+exec /entrypoint.sh kong docker-start
