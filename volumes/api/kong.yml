@@ -49,7 +49,7 @@ plugins:
 
 services:
   - name: auth-v1-open
-    url: http://auth:9999/verify
+    url: http://pdfsearch-auth-internal:9999/verify
     routes:
       - name: auth-v1-open
         strip_path: true
@@ -57,7 +57,7 @@ services:
           - /auth/v1/verify
 
   - name: auth-v1-open-callback
-    url: http://auth:9999/callback
+    url: http://pdfsearch-auth-internal:9999/callback
     routes:
       - name: auth-v1-open-callback
         strip_path: true
@@ -65,7 +65,7 @@ services:
           - /auth/v1/callback
 
   - name: auth-v1-open-authorize
-    url: http://auth:9999/authorize
+    url: http://pdfsearch-auth-internal:9999/authorize
     routes:
       - name: auth-v1-open-authorize
         strip_path: true
@@ -73,7 +73,7 @@ services:
           - /auth/v1/authorize
 
   - name: auth-v1
-    url: http://auth:9999/
+    url: http://pdfsearch-auth-internal:9999/
     routes:
       - name: auth-v1-all
         strip_path: true
@@ -91,7 +91,7 @@ services:
             - anon
 
   - name: rest-v1
-    url: http://rest:3000/
+    url: http://pdfsearch-rest-internal:3000/
     routes:
       - name: rest-v1-all
         strip_path: true
@@ -109,7 +109,7 @@ services:
             - anon
 
   - name: graphql-v1
-    url: http://rest:3000/rpc/graphql
+    url: http://pdfsearch-rest-internal:3000/rpc/graphql
     routes:
       - name: graphql-v1-all
         strip_path: true
@@ -158,7 +158,7 @@ services:
             - anon
 
   - name: storage-v1
-    url: http://storage:5000/
+    url: http://pdfsearch-storage-internal:5000/
     routes:
       - name: storage-v1-all
         strip_path: true
@@ -176,7 +176,7 @@ services:
             - anon
 
   - name: meta
-    url: http://meta:8080/
+    url: http://pdfsearch-meta-internal:8080/
     routes:
       - name: meta-all
         strip_path: true
@@ -193,7 +193,7 @@ services:
             - admin
 
   - name: studio
-    url: http://studio:3000/
+    url: http://pdfsearch-studio-internal:3000/
     routes:
       - name: studio-hostname-all
         hosts:

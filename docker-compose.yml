@@ -107,6 +107,10 @@ services:
     # stacks share dokploy-network (the bare `kong` short name is
     # ambiguous across stacks). Apps connect via:
     #   SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000
+    # Kong is multi-homed, so its upstreams must likewise use the
+    # `pdfsearch-*-internal` aliases declared on the private default network.
+    # Bare names such as `studio` can resolve to an unrelated container on
+    # dokploy-network after a redeploy.
     networks:
       default:
       dokploy-network:
@@ -145,6 +149,10 @@ services:
   auth:
     <<: *supabase-common
     image: supabase/gotrue:v2.189.0
+    networks:
+      default:
+        aliases:
+          - pdfsearch-auth-internal
     expose:
       - "9999"
     depends_on:
@@ -192,6 +200,10 @@ services:
   rest:
     <<: *supabase-common
     image: postgrest/postgrest:v14.12
+    networks:
+      default:
+        aliases:
+          - pdfsearch-rest-internal
     expose:
       - "3000"
     depends_on:
@@ -262,6 +274,10 @@ services:
   storage:
     <<: *supabase-common
     image: supabase/storage-api:v1.60.4
+    networks:
+      default:
+        aliases:
+          - pdfsearch-storage-internal
     expose:
       - "5000"
     depends_on:
@@ -321,6 +337,10 @@ services:
   meta:
     <<: *supabase-common
     image: supabase/postgres-meta:v0.96.6
+    networks:
+      default:
+        aliases:
+          - pdfsearch-meta-internal
     expose:
       - "8080"
     depends_on:
@@ -344,6 +364,10 @@ services:
   studio:
     <<: *supabase-common
     image: supabase/studio:2026.07.07-sha-a6a04f2
+    networks:
+      default:
+        aliases:
+          - pdfsearch-studio-internal
     expose:
       - "3000"
     depends_on:
