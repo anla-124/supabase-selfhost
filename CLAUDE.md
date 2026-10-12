@@ -34,7 +34,7 @@ Browser → Traefik (Dokploy) → Kong :8000 → internal services
 
 ## Critical Gotchas
 
-**SITE_URL vs SUPABASE_PUBLIC_URL** — `SITE_URL` must point to the **app** (e.g., `https://pdfsearch.yourdomain.com`), not the Supabase URL. OAuth callbacks redirect to `SITE_URL/auth/callback`. Getting this wrong silently breaks login.
+**SITE_URL vs SUPABASE_PUBLIC_URL** — `SITE_URL` must point to the **app** (e.g., `https://app.yourdomain.com`), not the Supabase URL. OAuth callbacks redirect to `SITE_URL/auth/callback`. Getting this wrong silently breaks login.
 
 **Kong env var substitution** — When editing `kong.yml`, use `${VAR_NAME}` as a literal string placeholder. Then add the corresponding sed substitution in `kong-startup.sh`. The startup script converts these to real values before Kong loads the config.
 
@@ -42,11 +42,15 @@ Browser → Traefik (Dokploy) → Kong :8000 → internal services
 
 **db-setup is not optional** — Without it, auth/storage/rest services can't connect (wrong passwords) and storage fails with RLS errors (missing `BYPASSRLS` on `supabase_storage_admin`).
 
+**Optional providers** — Google OAuth is off unless `GOTRUE_EXTERNAL_GOOGLE_ENABLED=true`; SMTP vars (`SMTP_*`) map to `GOTRUE_SMTP_*` and only matter when `GOTRUE_MAILER_AUTOCONFIRM=false` or for emails.
+
 **WebSocket support** — Must be enabled on the `supabase.yourdomain.com` Dokploy domain settings for Realtime to work.
 
 **STUDIO_HOSTNAME** — Must be set in `.env` and Dokploy Environment Variables, or the hostname-based Studio route in Kong won't resolve.
 
-**Cloudflare Access** — If the Supabase URL is behind Cloudflare Access, apps in the same Docker network should use `SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000` for server-side calls, bypassing Cloudflare (which returns HTML challenge pages to non-browser requests). Use the `pdfsearch-kong` alias (not bare `kong`) so the lookup resolves deterministically when multiple Supabase stacks share `dokploy-network`.
+**STACK_NAME** — Required in `.env`. Kong gets the alias `<STACK_NAME>-kong` on `dokploy-network`; it must be unique per Supabase stack on the host. Internal upstreams in `kong.yml` use fixed `*-internal` aliases on the stack's private default network (no per-stack substitution needed).
+
+**Cloudflare Access** — If the Supabase URL is behind Cloudflare Access, apps in the same Docker network should use `SUPABASE_INTERNAL_URL=http://<STACK_NAME>-kong:8000` for server-side calls, bypassing Cloudflare (which returns HTML challenge pages to non-browser requests). Use the `<STACK_NAME>-kong` alias (not bare `kong`) so the lookup resolves deterministically when multiple Supabase stacks share `dokploy-network`.
 
 ## Database Roles
 

@@ -103,22 +103,21 @@ services:
     image: kong/kong:3.9.1
     # Kong is the only service that joins dokploy-network — it's the
     # ingress point Traefik routes to. The stack-specific alias
-    # `pdfsearch-kong` lets apps disambiguate when multiple Supabase
+    # `<STACK_NAME>-kong` lets apps disambiguate when multiple Supabase
     # stacks share dokploy-network (the bare `kong` short name is
     # ambiguous across stacks). Apps connect via:
-    #   SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000
+    #   SUPABASE_INTERNAL_URL=http://<STACK_NAME>-kong:8000
     # Kong is multi-homed, so its upstreams must likewise use the
-    # `pdfsearch-*-internal` aliases declared on the private default network.
+    # `*-internal` aliases declared on the private default network.
     # Bare names such as `studio` can resolve to an unrelated container on
     # dokploy-network after a redeploy.
     networks:
       default:
       dokploy-network:
         aliases:
-          - pdfsearch-kong
+          - ${STACK_NAME:?Set STACK_NAME in .env to a unique name for this stack}-kong
     expose:
       - "8000"
-      - "8443"
     depends_on:
       db:
         condition: service_healthy
@@ -152,7 +151,7 @@ services:
     networks:
       default:
         aliases:
-          - pdfsearch-auth-internal
+          - auth-internal
     expose:
       - "9999"
     depends_on:
@@ -175,14 +174,23 @@ services:
       GOTRUE_JWT_EXP: ${GOTRUE_JWT_EXP:-3600}
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
 
-      # Set to "false" in production if you want email confirmation on signup.
-      # "true" allows signup without SMTP — useful when using OAuth-only auth.
-      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      # "true" allows signup without email confirmation (no SMTP needed).
+      # Set to "false" and configure SMTP_* in .env to require confirmation.
+      GOTRUE_MAILER_AUTOCONFIRM: ${GOTRUE_MAILER_AUTOCONFIRM:-true}
 
-      # Google OAuth — optional. Remove these four lines if not using Google OAuth.
-      GOTRUE_EXTERNAL_GOOGLE_ENABLED: "true"
-      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID}
-      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOTRUE_EXTERNAL_GOOGLE_SECRET}
+      # SMTP — optional. Only needed when GOTRUE_MAILER_AUTOCONFIRM=false
+      # or for password-reset / magic-link emails.
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-}
+
+      # Google OAuth — optional. Disabled unless GOTRUE_EXTERNAL_GOOGLE_ENABLED=true in .env.
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOTRUE_EXTERNAL_GOOGLE_ENABLED:-false}
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOTRUE_EXTERNAL_GOOGLE_SECRET:-}
       GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${API_EXTERNAL_URL}/auth/v1/callback
 
       GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
@@ -203,7 +211,7 @@ services:
     networks:
       default:
         aliases:
-          - pdfsearch-rest-internal
+          - rest-internal
     expose:
       - "3000"
     depends_on:
@@ -269,7 +277,7 @@ services:
       start_period: 30s
 
   ##############################################################################
-  # Storage — File storage API (PDF uploads)
+  # Storage — File storage API
   ##############################################################################
   storage:
     <<: *supabase-common
@@ -277,7 +285,7 @@ services:
     networks:
       default:
         aliases:
-          - pdfsearch-storage-internal
+          - storage-internal
     expose:
       - "5000"
     depends_on:
@@ -340,7 +348,7 @@ services:
     networks:
       default:
         aliases:
-          - pdfsearch-meta-internal
+          - meta-internal
     expose:
       - "8080"
     depends_on:
@@ -357,9 +365,10 @@ services:
 
   ##############################################################################
   # Studio — Supabase Dashboard
-  # SECURITY: Do NOT expose Studio publicly in production.
-  # Access via SSH tunnel: ssh -L 3000:localhost:3000 user@server
-  # See README for details.
+  # Studio has no login of its own. It is reachable only through Kong's
+  # hostname route (STUDIO_HOSTNAME), which enforces HTTP Basic Auth using
+  # DASHBOARD_USERNAME / DASHBOARD_PASSWORD. Use a strong password, or put
+  # the studio domain behind an access proxy. See README "Studio Access".
   ##############################################################################
   studio:
     <<: *supabase-common
@@ -367,7 +376,7 @@ services:
     networks:
       default:
         aliases:
-          - pdfsearch-studio-internal
+          - studio-internal
     expose:
       - "3000"
     depends_on:

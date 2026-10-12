@@ -6,6 +6,15 @@ Dokploy-compatible, self-hosted Supabase stack. Drop-in replacement for managed 
 
 ---
 
+## Prerequisites
+
+- A server running [Dokploy](https://dokploy.com) (this creates the external `dokploy-network` that the stack joins)
+- Two DNS records pointing at the Dokploy server: one for the API (e.g. `supabase.yourdomain.com`) and one for Studio (e.g. `studio.yourdomain.com`)
+- An app domain (e.g. `app.yourdomain.com`) — used as `SITE_URL` for auth redirects
+- `openssl` locally to generate secrets (Node.js is optional, see step 3)
+
+---
+
 ## Files
 
 | File | Purpose |
@@ -14,7 +23,7 @@ Dokploy-compatible, self-hosted Supabase stack. Drop-in replacement for managed 
 | `.env.example` | Environment template — copy to `.env` |
 | `volumes/api/kong.yml` | Kong API gateway routing |
 | `volumes/api/kong-startup.sh` | Substitutes env vars into kong.yml at container start |
-| `volumes/db/init/01_pgvector.sql` | Optional extension reference — not mounted or executed by this Compose stack |
+| `volumes/db/init/01_pgvector.sql` | Optional extension reference — not mounted or executed by this Compose stack. The `vector` and `uuid-ossp` extensions ship with the image; enable them with `CREATE EXTENSION` when needed |
 | `.gitignore` | Excludes `.env` and data directories |
 
 ---
@@ -25,11 +34,11 @@ Dokploy-compatible, self-hosted Supabase stack. Drop-in replacement for managed 
 
 ```bash
 git clone <this-repo>
-cd selfhosted-supabase
+cd <repo-directory>
 cp .env.example .env
 ```
 
-Edit `.env` — every value marked `change-me` must be replaced.
+Edit `.env` — every value marked `change-me` must be replaced, and `STACK_NAME` must be set to a name that is unique among the Supabase stacks on your Dokploy host.
 
 ### 2. Generate secrets
 
@@ -45,7 +54,22 @@ openssl rand -hex 32   # DASHBOARD_PASSWORD
 
 ### 3. Generate ANON_KEY and SERVICE_ROLE_KEY
 
-Both are HS256 JWTs signed with your `JWT_SECRET`. Run this Node.js script:
+Both are HS256 JWTs signed with your `JWT_SECRET`. Either use the shell script below (only needs `openssl`), or the Node.js alternative after it.
+
+```bash
+# generate-keys.sh — usage: JWT_SECRET=<your secret> sh generate-keys.sh
+b64() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+sign() {
+  header=$(printf '{"alg":"HS256","typ":"JWT"}' | b64)
+  payload=$(printf '{"role":"%s","iss":"supabase","iat":%s,"exp":1893456000}' "$1" "$(date +%s)" | b64)
+  sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64)
+  printf '%s.%s.%s' "$header" "$payload" "$sig"
+}
+echo "ANON_KEY=$(sign anon)"
+echo "SERVICE_ROLE_KEY=$(sign service_role)"
+```
+
+Node.js alternative:
 
 ```js
 // generate-keys.js
@@ -96,7 +120,7 @@ API_EXTERNAL_URL=https://supabase.yourdomain.com
 2. Go to the **Environment** tab:
    - Paste all values from your `.env` into the **Environment Variables** field
    - Toggle **Create Environment File** ON — this writes the vars to `.env` on the server before the stack starts. Without this, services won't receive their configuration.
-   - Make sure `STUDIO_HOSTNAME` is included (e.g. `STUDIO_HOSTNAME=studio.yourdomain.com`) — Kong uses this to route browser requests to Studio
+   - Make sure `STACK_NAME` and `STUDIO_HOSTNAME` are included (e.g. `STUDIO_HOSTNAME=studio.yourdomain.com`) — Kong uses this to route browser requests to Studio
 3. Deploy — watch logs until all services are healthy
 4. In Dokploy **Domains**, add two domains — both pointing to the **kong** service → port `8000`:
    - `supabase.yourdomain.com` — API gateway (what the app connects to)
@@ -139,12 +163,12 @@ SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>
 **If your app server runs in the same Docker network as Kong** (e.g. also deployed on Dokploy) and the Supabase URL is behind Cloudflare Access, add:
 
 ```env
-SUPABASE_INTERNAL_URL=http://pdfsearch-kong:8000
+SUPABASE_INTERNAL_URL=http://<STACK_NAME>-kong:8000
 ```
 
 This routes server-side Supabase calls directly through the internal Docker network, bypassing Cloudflare (which would intercept the request and return an HTML page instead of JSON). Browser/client-side code still uses `NEXT_PUBLIC_SUPABASE_URL` as normal.
 
-**Note the `pdfsearch-kong` alias** instead of the bare `kong` short name: when multiple Supabase stacks run on the same Dokploy host they all share `dokploy-network` and the short alias `kong` becomes ambiguous (round-robin DNS). The stack-specific alias prevents that.
+**Note the `<STACK_NAME>-kong` alias** (using the `STACK_NAME` from your `.env`) instead of the bare `kong` short name: when multiple Supabase stacks run on the same Dokploy host they all share `dokploy-network` and the short alias `kong` becomes ambiguous (round-robin DNS). The stack-specific alias prevents that.
 
 ---
 
@@ -162,17 +186,18 @@ Dokploy project renames, volume deletion, or host migration will lose this data 
 ### Backup
 
 ```bash
+# Find the actual volume names first: docker volume ls | grep -E 'db_data_v4|storage_data'
 # Postgres — logical dump (run from the host, replace <container> with the db container name)
 docker exec <db-container> pg_dumpall -U supabase_admin > backup-$(date +%Y%m%d).sql
 
 # Storage files — copy the volume contents
 docker run --rm \
-  -v selfhosted-supabase_storage_data:/data \
+  -v <project>_storage_data:/data \
   -v $(pwd):/backup \
   alpine tar czf /backup/storage-$(date +%Y%m%d).tar.gz -C /data .
 ```
 
-> The volume name prefix (`selfhosted-supabase_`) is set by Docker Compose from the project directory name. Adjust if your Dokploy project name differs.
+> `<project>` is the Docker Compose project name, which Dokploy generates from your project/service name. Use the real volume name from `docker volume ls`.
 
 ### Restore
 
@@ -183,7 +208,7 @@ docker exec -i <db-container> psql -v ON_ERROR_STOP=1 -U supabase_admin -d postg
 
 # Storage files — extract back into the volume
 docker run --rm \
-  -v selfhosted-supabase_storage_data:/data \
+  -v <project>_storage_data:/data \
   -v $(pwd):/backup \
   alpine tar xzf /backup/storage-YYYYMMDD.tar.gz -C /data
 ```
@@ -209,16 +234,9 @@ Kong handles authentication — Studio itself has no login screen.
 
 The `studio.yourdomain.com` domain must point to the **kong** service on port `8000` in Dokploy (not to the studio service directly). Kong's hostname-based route in `kong.yml` matches the `studio.yourdomain.com` host and proxies it to the internal `studio:3000` container.
 
-### SSH tunnel (alternative)
+### Hardening
 
-If you prefer not to expose Studio publicly:
-
-```bash
-ssh -L 3000:localhost:3000 user@your-server
-# Then open: http://localhost:3000
-```
-
-This requires the studio container to be reachable on port 3000 from the Docker host.
+Studio gives full admin access to the database, and its only protection is Kong's Basic Auth. Use a long random `DASHBOARD_PASSWORD`, and consider putting the studio domain behind an access proxy (e.g. Cloudflare Access, VPN) or only creating the Dokploy domain when you need it. This stack publishes no host ports, so an SSH tunnel to Studio is not available.
 
 ---
 
@@ -228,11 +246,13 @@ Supabase Realtime uses WebSocket connections at `/realtime/v1/websocket`. Traefi
 
 In Dokploy UI → `supabase.yourdomain.com` domain → **Advanced settings** → enable **WebSocket support**.
 
-**Verify:** Upload a file and confirm the processing status updates live without page refresh.
+**Verify:** subscribe to a table's changes from your app (or the Studio Realtime inspector) and confirm updates arrive live without a page refresh.
 
 ---
 
-## Google OAuth Setup
+## Google OAuth Setup (optional)
+
+Google OAuth is disabled by default. To enable it:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
 2. Create an OAuth 2.0 Client ID (Web application)
@@ -240,33 +260,34 @@ In Dokploy UI → `supabase.yourdomain.com` domain → **Advanced settings** →
    ```
    https://supabase.yourdomain.com/auth/v1/callback
    ```
-4. Copy the Client ID and Secret into `.env`:
+4. Copy the Client ID and Secret into `.env` and enable the provider:
    ```env
+   GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
    GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
    GOTRUE_EXTERNAL_GOOGLE_SECRET=your-client-secret
    ```
 
 ---
 
-## SMTP
+## SMTP (optional)
 
-SMTP is optional for initial setup (`GOTRUE_MAILER_AUTOCONFIRM=true` allows signup without email verification).
-
-Set these in `.env`:
+SMTP is optional for initial setup (`GOTRUE_MAILER_AUTOCONFIRM=true`, the default, allows signup without email verification). To require email confirmation or send password-reset / magic-link emails, set in `.env`:
 
 ```env
+GOTRUE_MAILER_AUTOCONFIRM=false
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USER=your-user
 SMTP_PASS=your-password
 SMTP_ADMIN_EMAIL=admin@example.com
+SMTP_SENDER_NAME=My App
 ```
 
 ---
 
 ## PostgreSQL Version
 
-This stack uses **PostgreSQL 17** (`supabase/postgres:17.6.1.097`). Update the image tag if your app requires a different major version. This prevents `pg_dump` compatibility issues if you migrate from a managed Supabase instance.
+This stack uses **PostgreSQL 17** (`supabase/postgres:17.6.1.136`). Update the image tag if your app requires a different major version. This prevents `pg_dump` compatibility issues if you migrate from a managed Supabase instance.
 
 ---
 
